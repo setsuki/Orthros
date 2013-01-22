@@ -257,24 +257,28 @@ class Orthros
 	
 	/**
 	 * SELECT文を実行する
+	 * @param	int			$result_type			結果取得タイプ(ORTHROS_RESULT_TYPE_XXXX default:ORTHROS_RESULT_TYPE_FETCH_ALL)
+	 * @param	mixed		$result_option			結果取得タイプ用のオプション(default:null)
 	 * @reutrn	array								行データの入った配列の配列
 	 */
-	public function select()
+	public function select($result_type = ORTHROS_RESULT_TYPE_FETCH_ALL, $result_option = null)
 	{
 		$this->makeQuery(ORTHROS_QUERY_TYPE_SELECT);
-		return $this->execQuery($this->latest_query_string, $this->latest_query_param, ORTHROS_RESULT_TYPE_FETCH_ALL);
+		return $this->execQuery($this->latest_query_string, $this->latest_query_param, $result_type, $result_option);
 	}
 	
 	
 	
 	/**
 	 * SELECT文を実行して、最初の要素だけを返す
+	 * @param	int			$result_type			結果取得タイプ(ORTHROS_RESULT_TYPE_XXXX default:ORTHROS_RESULT_TYPE_FETCH_ALL)
+	 * @param	mixed		$result_option			結果取得タイプ用のオプション(default:null)
 	 * @reutrn	array								行データの入った配列
 	 */
-	public function selectOne()
+	public function selectOne($result_type = ORTHROS_RESULT_TYPE_FETCH_ALL, $result_option = null)
 	{
 		$this->limit(1);
-		$data = $this->select();
+		$data = $this->select($result_type, $result_option);
 		if (!empty($data)) {
 			return $data[0];
 		}
@@ -282,12 +286,25 @@ class Orthros
 	}
 	
 	
+	
+	/**
+	 * 現在指定されている条件での件数を返す
+	 * @reutrn	int								対象の件数
+	 */
+	public function count()
+	{
+		$this->column(array('COUNT(*) AS cnt'));
+		$cnt_info = $this->selectOne();
+		return $cnt_info['cnt'];
+	}
+	
+	
+	
 	/**
 	 * INSERT文を実行する
 	 * @param	array		$insert_data_arr		INSERTするデータの配列
 	 * @reutrn	int									影響のあった行数
 	 */
-
 	public function insert($insert_data_arr)
 	{
 		if (!isset($insert_data_arr[0])) {
