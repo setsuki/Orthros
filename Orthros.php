@@ -15,6 +15,7 @@ class Orthros
 	// ローカル変数
 	protected $pdo = null;
 	protected $transaction_flg = false;
+	protected $lock_tables = array();							// ロックしたテーブル
 	protected $default_fetch_mode = PDO::FETCH_ASSOC;
 	
 	// 現在処理中の情報
@@ -26,6 +27,7 @@ class Orthros
 	protected $latest_group_by;
 	protected $latest_limit;
 	
+	protected $latest_lock_mode;
 	protected $latest_update_param;
 	protected $latest_insert_param;
 	
@@ -89,6 +91,7 @@ class Orthros
 		$this->latest_group_by = null;
 		$this->latest_limit = null;
 		
+		$this->latest_lock_mode = null;
 		$this->latest_update_param = null;
 		$this->latest_insert_param = null;
 		$this->latest_query_string = null;
@@ -204,6 +207,18 @@ class Orthros
 	}
 	
 	
+	
+	/**
+	 * ロックモードのセット
+	 * @param	int			$lock_mode					ロックモード(ORTHROS_LOCK_MODE_XXXX default:ORTHROS_LOCK_MODE_FOR_UPDATE)
+	 * @return	Orthros									this
+	 */
+	public function lock($lock_mode = ORTHROS_LOCK_MODE_FOR_UPDATE)
+	{
+		$this->latest_lock_mode = $lock_mode;
+		return $this;
+	}
+	
 	// ========================================================================
 	// 実行メソッド
 	// ========================================================================
@@ -218,6 +233,7 @@ class Orthros
 		}
 		$this->pdo->beginTransaction();
 		$this->transaction_flg = true;
+		$this->lock_tables = array();			// ロックしたテーブルの配列を初期化
 	}
 	
 	
@@ -263,6 +279,10 @@ class Orthros
 	 */
 	public function select($result_type = ORTHROS_RESULT_TYPE_FETCH_ALL, $result_option = null)
 	{
+		if ($this->transaction_flg and isset($this->latest_lock_mode)) {
+			// トランザクション中でロックが指定されているならロック情報を記録
+			$this->lock_tables[ORTHROS_QUERY_TYPE_SELECT][$this->latest_table][$this->latest_lock_mode] = true;
+		}
 		$this->makeQuery(ORTHROS_QUERY_TYPE_SELECT);
 		return $this->execQuery($this->latest_query_string, $this->latest_query_param, $result_type, $result_option);
 	}
@@ -307,6 +327,11 @@ class Orthros
 	 */
 	public function insert($insert_data_arr)
 	{
+		if ($this->transaction_flg) {
+			// トランザクション中ならロック情報を記録
+			$this->lock_tables[ORTHROS_QUERY_TYPE_INSERT][$this->latest_table] = true;
+		}
+		
 		if (!isset($insert_data_arr[0])) {
 			// 0番目の要素が無ければ1次元配列として配列の配列にする
 			$this->latest_insert_param[0] = $insert_data_arr;
@@ -325,6 +350,11 @@ class Orthros
 	 */
 	public function delete()
 	{
+		if ($this->transaction_flg) {
+			// トランザクション中ならロック情報を記録
+			$this->lock_tables[ORTHROS_QUERY_TYPE_DELETE][$this->latest_table] = true;
+		}
+		
 		$this->makeQuery(ORTHROS_QUERY_TYPE_DELETE);
 		return $this->execQuery($this->latest_query_string, $this->latest_query_param, ORTHROS_RESULT_TYPE_ROW_COUNT);
 	}
@@ -338,6 +368,11 @@ class Orthros
 	 */
 	public function update($update_data_arr)
 	{
+		if ($this->transaction_flg) {
+			// トランザクション中ならロック情報を記録
+			$this->lock_tables[ORTHROS_QUERY_TYPE_UPDATE][$this->latest_table] = true;
+		}
+		
 		$this->latest_update_param = $update_data_arr;
 		$this->makeQuery(ORTHROS_QUERY_TYPE_UPDATE);
 		return $this->execQuery($this->latest_query_string, $this->latest_query_param, ORTHROS_RESULT_TYPE_ROW_COUNT);
@@ -419,6 +454,7 @@ class Orthros
 				$this->makeQueryGroupBy();
 				$this->makeQueryOrderBy();
 				$this->makeQueryLimit();
+				$this->makeQueryLock();
 				break;
 			// INSERT文
 			case ORTHROS_QUERY_TYPE_INSERT:
@@ -552,6 +588,25 @@ class Orthros
 	
 	
 	/**
+	 * ロック makeQuery補助メソッド
+	 */
+	protected function makeQueryLock()
+	{
+		if (isset($this->latest_lock_mode)) {
+			switch($this->latest_lock_mode) {
+				case ORTHROS_LOCK_MODE_FOR_UPDATE:
+					$this->latest_query_string .= 'FOR UPDATE ';
+					break;
+				case ORTHROS_LOCK_MODE_SHARE_MODE:
+					$this->latest_query_string .= 'LOCK IN SHARE MODE ';
+					break;
+			}
+		}
+	}
+	
+	
+	
+	/**
 	 * INERTのVALUE makeQuery補助メソッド
 	 */
 	protected function makeQueryInsertValue()
@@ -584,5 +639,60 @@ class Orthros
 		}
 		
 		$this->latest_query_string .= implode(',', $tmp_update_arr);
+	}
+	
+	// ========================================================================
+	// その他補助メソッド
+	// ========================================================================
+	
+	/**
+	 * ロックしたテーブルの情報を取得する
+	 * @reutrn	string								ロックしたテーブルの情報をまとめた文字列
+	 */
+	public function getLockTableInfo()
+	{
+		$return_str = '';
+		if (isset($this->latest_table)) {
+			// 最後に操作したテーブル(これは必ずしもロックされていないが、lock wait timeout になった場合などに手がかりとなるため残す)
+			$return_str .= sprintf('[latest_table] %s ', $this->latest_table);
+		}
+		
+		if (!empty($this->lock_tables)) {
+			// ロックしたテーブル情報があるなら順次追加
+			foreach ($this->lock_tables as $query_type => $table_arr) {
+				// 最初にクエリタイプ
+				switch ($query_type) {
+					case ORTHROS_QUERY_TYPE_SELECT:
+						$return_str .= '[SELECT] ';
+						break;
+					case ORTHROS_QUERY_TYPE_INSERT:
+						$return_str .= '[INSERT] ';
+						break;
+					case ORTHROS_QUERY_TYPE_DELETE:
+						$return_str .= '[DELETE] ';
+						break;
+					case ORTHROS_QUERY_TYPE_UPDATE:
+						$return_str .= '[UPDATE] ';
+						break;
+				}
+				
+				// 順次テーブルを追加
+				foreach ($table_arr as $lock_table => $lock) {
+					if (ORTHROS_QUERY_TYPE_SELECT == $query_type) {
+						// SELECT の場合は排他ロックと共有ロックを出し分ける
+						if (isset($lock[ORTHROS_LOCK_MODE_FOR_UPDATE])) {
+							$return_str .= $lock_table . '(for update) ';
+						}
+						if (isset($lock[ORTHROS_LOCK_MODE_SHARE_MODE])) {
+							$return_str .= $lock_table . '(share mode) ';
+						}
+					} else {
+						$return_str .= $lock_table . ' ';
+					}
+				}
+			}
+		}
+		
+		return $return_str;
 	}
 }

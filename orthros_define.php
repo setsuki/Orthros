@@ -38,3 +38,8 @@ define('ORTHROS_RESULT_TYPE_FETCH_ALL', 1);			// fetchAllした結果を返す
 define('ORTHROS_RESULT_TYPE_ROW_COUNT', 2);			// 影響のあった行数を返す
 define('ORTHROS_RESULT_TYPE_STATEMENT', 3);			// PDOStatementをそのまま返す
 define('ORTHROS_RESULT_TYPE_OBJECT', 4);			// 指定されたクラスのオブジェクトを生成して値をセットして返す
+
+// ロックの種別
+define('ORTHROS_LOCK_MODE_FOR_UPDATE', 1);			// 排他ロック
+define('ORTHROS_LOCK_MODE_SHARE_MODE', 2);			// 共有ロック
+
