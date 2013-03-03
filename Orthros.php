@@ -12,6 +12,10 @@ require_once __DIR__ . '/orthros_define.php';
 
 class Orthros
 {
+	public $db_host;
+	public $db_port;
+	public $db_name;
+	
 	// ローカル変数
 	protected $pdo = null;
 	protected $transaction_flg = false;
@@ -36,11 +40,11 @@ class Orthros
 	
 	/**
 	 * コンストラクタ
-	 * @param	$db_host	string		接続するデータベースのホスト
-	 * @param	$db_port	string		接続するデータベースのポート
-	 * @param	$db_name	string		接続するデータベースの名称
-	 * @param	$db_user	string		接続するユーザ名
-	 * @param	$db_pass	string		接続するユーザのパスワード
+	 * @param	string		$db_host		接続するデータベースのホスト
+	 * @param	string		$db_port		接続するデータベースのポート
+	 * @param	string		$db_name		接続するデータベースの名称
+	 * @param	string		$db_user		接続するユーザ名
+	 * @param	string		$db_pass		接続するユーザのパスワード
 	 */
 	public function __construct($db_host, $db_port, $db_name, $db_user, $db_pass)
 	{
@@ -52,14 +56,17 @@ class Orthros
 	/**
 	 * DBに接続する
 	 * 
-	 * @param	$db_host	string		接続するデータベースのホスト
-	 * @param	$db_port	string		接続するデータベースのポート
-	 * @param	$db_name	string		接続するデータベースの名称
-	 * @param	$db_user	string		接続するユーザ名
-	 * @param	$db_pass	string		接続するユーザのパスワード
+	 * @param	string		$db_host		接続するデータベースのホスト
+	 * @param	string		$db_port		接続するデータベースのポート
+	 * @param	string		$db_name		接続するデータベースの名称
+	 * @param	string		$db_user		接続するユーザ名
+	 * @param	string		$db_pass		接続するユーザのパスワード
 	 */
 	public function connect($db_host, $db_port, $db_name, $db_user, $db_pass)
 	{
+		$this->db_host = $db_host;
+		$this->db_port = $db_port;
+		$this->db_name = $db_name;
 		// DBに接続
 		$this->pdo = new PDO("mysql:host={$db_host};port={$db_port};dbname={$db_name}", $db_user, $db_pass);
 		// PDOがPDOExceptionをスローするようにする
@@ -74,6 +81,32 @@ class Orthros
 	public function disconnect()
 	{
 		$this->pdo = null;
+	}
+	
+	
+	
+	/**
+	 * PDOの設定を行う
+	 * 
+	 * @param	array		$set_attribute_arr		設定配列
+	 */
+	public function setPDOAttribute($set_attribute_arr)
+	{
+		foreach ($set_attribute_arr as $set_key => $set_value) {
+			$this->pdo->setAttribute($set_key, $set_value);
+		}
+	}
+	
+	
+	
+	/**
+	 * トランザクション中かどうかを返す
+	 * 
+	 * @param	bool								トランザクション中かどうか
+	 */
+	public function isTransaction()
+	{
+		return $this->transaction_flg;
 	}
 	
 	
