@@ -43,3 +43,5 @@ define('ORTHROS_RESULT_TYPE_OBJECT', 4);			// 指定されたクラスのオブ�
 define('ORTHROS_LOCK_MODE_FOR_UPDATE', 1);			// 排他ロック
 define('ORTHROS_LOCK_MODE_SHARE_MODE', 2);			// 共有ロック
 
+// デフォルトのキャッシュ時間
+define('ORTHROS_DEFAULT_CACHE_EXPIRE_SEC', 21600);

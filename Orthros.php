@@ -12,6 +12,9 @@ require_once __DIR__ . '/orthros_define.php';
 
 class Orthros
 {
+	static protected $cache_host_arr = array();
+	static protected $cache_setting_arr = array();
+	
 	public $db_host;
 	public $db_port;
 	public $db_name;
@@ -32,14 +35,20 @@ class Orthros
 	protected $latest_limit;
 	
 	protected $latest_lock_mode;
+	protected $latest_cache_expire;
+	protected $latest_cache_category;
 	protected $latest_update_param;
 	protected $latest_insert_param;
 	
 	protected $latest_query_string;
 	protected $latest_query_param;
 	
+	// キャッシュ関連の変数
+	protected $default_cache_category = 'default';
+	
 	/**
 	 * コンストラクタ
+	 * 
 	 * @param	string		$db_host		接続するデータベースのホスト
 	 * @param	string		$db_port		接続するデータベースのポート
 	 * @param	string		$db_name		接続するデータベースの名称
@@ -100,6 +109,18 @@ class Orthros
 	
 	
 	/**
+	 * デフォルトのキャッシュカテゴリを設定する
+	 * 
+	 * @param	string		$category				カテゴリ名
+	 */
+	public function setDefaultCacheCategory($category)
+	{
+		$this->default_cache_category = $category;
+	}
+	
+	
+	
+	/**
 	 * トランザクション中かどうかを返す
 	 * 
 	 * @param	bool								トランザクション中かどうか
@@ -125,6 +146,8 @@ class Orthros
 		$this->latest_limit = null;
 		
 		$this->latest_lock_mode = null;
+		$this->latest_cache_expire = null;
+		$this->latest_cache_category = null;
 		$this->latest_update_param = null;
 		$this->latest_insert_param = null;
 		$this->latest_query_string = null;
@@ -137,6 +160,7 @@ class Orthros
 	
 	/**
 	 * 処理するテーブルのセット
+	 * 
 	 * @param	string			$table_name				処理するテーブル名
 	 * @return	Orthros									this
 	 */
@@ -151,6 +175,7 @@ class Orthros
 	
 	/**
 	 * 処理するカラムのセット
+	 * 
 	 * @param	array			$column_arr				カラム名の配列
 	 * @return	Orthros									this
 	 */
@@ -164,6 +189,7 @@ class Orthros
 	
 	/**
 	 * WHERE句のセット
+	 * 
 	 * @param	array			$condition_arr			条件用配列(array('column_name' => $condition))
 	 * @param	string			$condition_type			条件指定文字列(ORTHROS_WHERE_XXXXX default:ORTHROS_WHERE_EQUAL)
 	 * @return	Orthros									this
@@ -181,6 +207,7 @@ class Orthros
 	
 	/**
 	 * JOINするテーブルのセット
+	 * 
 	 * @param	string			$join_table				JOINするテーブル名
 	 * @param	array			$on_array				条件用配列(array('table1_column' => 'table2_column'))
 	 * @param	string			$join_type				JOINのタイプ指定文字列(ORTHROS_JOIN_XXXXX default:ORTHROS_JOIN_INNER)
@@ -200,6 +227,7 @@ class Orthros
 	
 	/**
 	 * ORDER BY句のセット
+	 * 
 	 * @param	array			$order_arr				OERDER配列(array('column_name' => ORTHROS_JOIN_XXXX))
 	 * @return	Orthros									this
 	 */
@@ -213,6 +241,7 @@ class Orthros
 	
 	/**
 	 * GROUP BY句のセット
+	 * 
 	 * @param	array			$group_arr				GROUP BY句に指定するカラム名の配列
 	 * @return	Orthros									this
 	 */
@@ -226,6 +255,7 @@ class Orthros
 	
 	/**
 	 * LIMIT句のセット
+	 * 
 	 * @param	int			$count						取得件数
 	 * @param	int			$offset						取得位置(default:0)
 	 * @return	Orthros									this
@@ -243,12 +273,32 @@ class Orthros
 	
 	/**
 	 * ロックモードのセット
+	 * 
 	 * @param	int			$lock_mode					ロックモード(ORTHROS_LOCK_MODE_XXXX default:ORTHROS_LOCK_MODE_FOR_UPDATE)
 	 * @return	Orthros									this
 	 */
 	public function lock($lock_mode = ORTHROS_LOCK_MODE_FOR_UPDATE)
 	{
 		$this->latest_lock_mode = $lock_mode;
+		return $this;
+	}
+	
+	
+	
+	/**
+	 * キャッシュカテゴリのセット
+	 * 
+	 * @param	int				$expire					キャッシュ時間
+	 * @param	string			$cache_category			キャッシュカテゴリ(default:default)
+	 * @return	Orthros									this
+	 */
+	public function cache($expire = null, $cache_category = null)
+	{
+		$this->latest_cache_expire = $expire;
+		$this->latest_cache_category = $this->default_cache_category;
+		if (isset($cache_category)) {
+			$this->latest_cache_category = $cache_category;
+		}
 		return $this;
 	}
 	
@@ -295,6 +345,7 @@ class Orthros
 	
 	/**
 	 * 最後にINSERTしたIDを取得する
+	 * 
 	 * @reutrn	int									最後にINSERTしたID
 	 */
 	public function lastInsertId()
@@ -306,6 +357,7 @@ class Orthros
 	
 	/**
 	 * SELECT文を実行する
+	 * 
 	 * @param	int			$result_type			結果取得タイプ(ORTHROS_RESULT_TYPE_XXXX default:ORTHROS_RESULT_TYPE_FETCH_ALL)
 	 * @param	mixed		$result_option			結果取得タイプ用のオプション(default:null)
 	 * @reutrn	array								行データの入った配列の配列
@@ -317,13 +369,19 @@ class Orthros
 			$this->lock_tables[ORTHROS_QUERY_TYPE_SELECT][$this->latest_table][$this->latest_lock_mode] = true;
 		}
 		$this->makeQuery(ORTHROS_QUERY_TYPE_SELECT);
-		return $this->execQuery($this->latest_query_string, $this->latest_query_param, $result_type, $result_option);
+		if (isset($this->latest_cache_category) and !isset($this->latest_lock_mode) and ORTHROS_RESULT_TYPE_STATEMENT != $result_type) {
+			// キャッシュが有効の場合(ロックするクエリでなく、result_typeがステートメントの場合以外)
+			return $this->execCacheSelect($result_type, $result_option);
+		} else {
+			return $this->execQuery($this->latest_query_string, $this->latest_query_param, $result_type, $result_option);
+		}
 	}
 	
 	
 	
 	/**
 	 * SELECT文を実行して、最初の要素だけを返す
+	 * 
 	 * @param	int			$result_type			結果取得タイプ(ORTHROS_RESULT_TYPE_XXXX default:ORTHROS_RESULT_TYPE_FETCH_ALL)
 	 * @param	mixed		$result_option			結果取得タイプ用のオプション(default:null)
 	 * @reutrn	array								行データの入った配列
@@ -342,6 +400,7 @@ class Orthros
 	
 	/**
 	 * 現在指定されている条件での件数を返す
+	 * 
 	 * @reutrn	int								対象の件数
 	 */
 	public function count()
@@ -355,6 +414,7 @@ class Orthros
 	
 	/**
 	 * INSERT文を実行する
+	 * 
 	 * @param	array		$insert_data_arr		INSERTするデータの配列
 	 * @reutrn	int									影響のあった行数
 	 */
@@ -379,6 +439,7 @@ class Orthros
 	
 	/**
 	 * DELETE文を実行する
+	 * 
 	 * @reutrn	int									影響のあった行数
 	 */
 	public function delete()
@@ -396,6 +457,7 @@ class Orthros
 	
 	/**
 	 * UPDATE文を実行する
+	 * 
 	 * @param	array		$update_data_arr		UPDATEするデータの配列(array('column_name' => value))
 	 * @reutrn	int									影響のあった行数
 	 */
@@ -415,6 +477,7 @@ class Orthros
 	
 	/**
 	 * 指定されたクエリを実行する
+	 * 
 	 * @param	string		$query_string			クエリ文字列
 	 * @param	array		$query_param			パラメータ配列(default:空配列)
 	 * @param	int			$result_type			結果取得タイプ(ORTHROS_RESULT_TYPE_XXXX default:ORTHROS_RESULT_TYPE_FETCH_ALL)
@@ -463,12 +526,40 @@ class Orthros
 		}
 	}
 	
+	
+	/**
+	 * キャッシュを有効としたSELECT実行
+	 * キャッシュデータがある場合はキャッシュから取得して返す
+	 * 
+	 * @param	int			$result_type			結果取得タイプ(ORTHROS_RESULT_TYPE_XXXX default:ORTHROS_RESULT_TYPE_FETCH_ALL)
+	 * @param	mixed		$result_option			結果取得タイプ用のオプション(default:null)
+	 * @return	mixed								result_typeに対応した結果
+	 */
+	public function execCacheSelect($result_type = ORTHROS_RESULT_TYPE_FETCH_ALL, $result_option = null)
+	{
+		$cache_key = md5(sprintf('%s/%s/%s/%s/%s/%s/%s', $this->db_host, $this->db_port, $this->db_name, $this->latest_query_string, json_encode($this->latest_query_param), $result_type, json_encode($result_option)));
+		$cache_data = self::$cache_host_arr[$this->latest_cache_category]->get($cache_key);
+		if (false === $cache_data) {
+			// キャッシュから取得出来なかった場合はクエリを実行して結果をキャッシュ
+			$cache_data = $this->execQuery($this->latest_query_string, $this->latest_query_param, $result_type, $result_option);
+			$expire = self::$cache_setting_arr[$this->latest_cache_category]['default_expire'];
+			if ($this->latest_cache_expire) {
+				// キャッシュ時間が指定されている場合
+				$expire = $this->latest_cache_expire;
+			}
+			// キャッシュに格納
+			self::$cache_host_arr[$this->latest_cache_category]->set($cache_key, $cache_data, 0, $expire);
+		}
+		return $cache_data;
+	}
+	
 	// ========================================================================
 	// クエリ生成メソッド
 	// ========================================================================
 	
 	/**
 	 * クエリを生成してクラス変数にセットする
+	 * 
 	 * @param	int			$query_type				クエリのタイプ指定(ORTHROS_QUERY_TYPE)
 	 */
 	protected function makeQuery($query_type)
@@ -727,5 +818,33 @@ class Orthros
 		}
 		
 		return $return_str;
+	}
+	
+	
+	// ========================================================================
+	// 静的メソッド
+	// ========================================================================
+	
+	/**
+	 * キャッシュ情報の設定を行う
+	 * 
+	 * @param	array		$set_attribute_arr		ホスト配列
+	 * @param	int			$default_expire			デフォルトのキャッシュ時間(秒)
+	 * @param	string		$category				カテゴリ名
+	 */
+	static public function setCacheHost($host_arr, $default_expire = ORTHROS_DEFAULT_CACHE_EXPIRE_SEC, $category = 'default')
+	{
+		$memcache = new Memcache();
+		foreach ($host_arr as $host_info) {
+			$persistent = true;		// 持続的接続はデフォルトtrue
+			if (isset($host_info['PERSISTENT'])) {
+				$persistent = $host_info['PERSISTENT'];
+			}
+			$memcache->addServer($host_info['HOST'], $host_info['PORT'], $persistent);
+		}
+		self::$cache_host_arr[$category] = $memcache;
+		self::$cache_setting_arr[$category] = array(
+			'default_expire' => $default_expire,
+		);
 	}
 }
