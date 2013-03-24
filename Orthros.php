@@ -645,7 +645,7 @@ class Orthros
 			}
 			
 			// ANDで結合
-			$this->latest_query_string .= implode('AND', $tmp_where_arr);
+			$this->latest_query_string .= implode('AND ', $tmp_where_arr);
 		}
 	}
 	
